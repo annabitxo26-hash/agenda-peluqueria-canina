@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agenda Peluquería Canina</title>
+<style>
+:root{
+  --bg:#f7f7f5; --card:#fff; --text:#252525; --muted:#777;
+  --line:#e8e8e5; --accent:#6f8f72; --accent2:#edf4ed;
+  --danger:#b85c5c;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text)}
+header{background:#fff;border-bottom:1px solid var(--line);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;gap:15px}
+.brand{font-size:22px;font-weight:700}
+.brand span{font-size:28px;margin-right:8px}
+button{border:0;border-radius:10px;padding:11px 16px;font-size:14px;cursor:pointer}
+.primary{background:var(--accent);color:#fff}
+.secondary{background:#f0f0ed;color:#333}
+main{max-width:1200px;margin:0 auto;padding:24px}
+.toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px}
+.toolbar h1{margin:0;font-size:28px}
+.nav{display:flex;gap:7px;align-items:center}
+.nav button{padding:8px 11px}
+.grid{display:grid;grid-template-columns:1.5fr .9fr;gap:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.calendar-head{display:grid;grid-template-columns:repeat(7,1fr);color:var(--muted);font-size:12px;margin-bottom:8px}
+.calendar-head div{text-align:center}
+.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.day{min-height:88px;border:1px solid var(--line);border-radius:9px;padding:7px;background:#fff}
+.day.muted{color:#aaa;background:#fafafa}
+.day.today{outline:2px solid #9ab09c}
+.day .num{font-weight:700;font-size:13px}
+.event{margin-top:6px;padding:5px 6px;border-radius:7px;background:var(--accent2);font-size:11px;line-height:1.3}
+.side-title{font-size:18px;font-weight:700;margin-bottom:13px}
+.appointment{padding:12px 0;border-bottom:1px solid var(--line)}
+.appointment:last-child{border-bottom:0}
+.time{font-weight:700}
+.badge{display:inline-block;padding:3px 7px;border-radius:20px;background:#f0f0ed;font-size:11px;margin-top:5px}
+.empty{color:var(--muted);padding:15px 0}
+.modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);align-items:center;justify-content:center;padding:20px;z-index:10}
+.modal-backdrop.show{display:flex}
+.modal{background:#fff;border-radius:18px;width:min(720px,100%);max-height:92vh;overflow:auto;padding:24px}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.modal h2{margin:0}
+.close{background:#f1f1ef;border-radius:50%;width:36px;height:36px;padding:0}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field.full{grid-column:1/-1}
+label{font-size:13px;font-weight:700}
+input,select,textarea{font:inherit;border:1px solid #d9d9d5;border-radius:9px;padding:10px;background:#fff}
+textarea{min-height:80px;resize:vertical}
+.photo-preview{display:flex;align-items:center;gap:12px}
+.preview{width:70px;height:70px;border-radius:12px;background:#f0f0ed;object-fit:cover;display:none}
+.actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}
+@media(max-width:800px){
+ .grid{grid-template-columns:1fr}
+ .form{grid-template-columns:1fr}
+ .field.full{grid-column:auto}
+ main{padding:14px}
+ header{padding:14px}
+ .toolbar{align-items:flex-start;flex-direction:column}
+ .day{min-height:65px}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span>🐾</span>Agenda Peluquería Canina</div>
+  <button class="primary" id="newBtn">＋ Nueva cita</button>
+</header>
+
+<main>
+  <div class="toolbar">
+    <h1 id="monthTitle"></h1>
+    <div class="nav">
+      <button class="secondary" id="prev">‹</button>
+      <button class="secondary" id="today">Hoy</button>
+      <button class="secondary" id="next">›</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <div class="calendar-head">
+        <div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div>
+      </div>
+      <div class="calendar" id="calendar"></div>
+    </section>
+
+    <aside class="card">
+      <div class="side-title">Citas de hoy</div>
+      <div id="todayAppointments"></div>
+    </aside>
+  </div>
+</main>
+
+<div class="modal-backdrop" id="modal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>🐶 Nueva cita</h2>
+      <button class="close" id="closeBtn">×</button>
+    </div>
+    <form id="appointmentForm">
+      <div class="form">
+        <div class="field">
+          <label for="date">Fecha *</label>
+          <input type="date" id="date" required>
+        </div>
+        <div class="field">
+          <label for="time">Hora *</label>
+          <input type="time" id="time" required>
+        </div>
+        <div class="field">
+          <label for="owner">Nombre del titular *</label>
+          <input type="text" id="owner" placeholder="Ej. María García" required>
+        </div>
+        <div class="field">
+          <label for="phone">Teléfono</label>
+          <input type="tel" id="phone" placeholder="Ej. 600 123 456">
+        </div>
+        <div class="field">
+          <label for="pet">Nombre de la mascota *</label>
+          <input type="text" id="pet" placeholder="Ej. Luna" required>
+        </div>
+        <div class="field">
+          <label for="service">Arreglo / servicio *</label>
+          <select id="service" required>
+            <option value="">Selecciona...</option>
+            <option>Baño</option>
+            <option>Baño + corte</option>
+            <option>Corte</option>
+            <option>Deslanado</option>
+            <option>Higiene</option>
+            <option>Corte de uñas</option>
+            <option>Otro</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="price">Precio (€)</label>
+          <input type="number" id="price" min="0" step="0.50" placeholder="35">
+        </div>
+        <div class="field">
+          <label for="payment">Cobro</label>
+          <select id="payment">
+            <option>Pendiente</option>
+            <option>Pagado</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label>Foto de la mascota</label>
+          <div class="photo-preview">
+            <img class="preview" id="preview" alt="Vista previa">
+            <input type="file" id="photo" accept="image/*">
+          </div>
+        </div>
+        <div class="field full">
+          <label for="notes">Observaciones</label>
+          <textarea id="notes" placeholder="Tipo de corte, comportamiento, preferencias del titular..."></textarea>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" class="secondary" id="cancelBtn">Cancelar</button>
+        <button type="submit" class="primary">Guardar cita</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const monthNames=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+let viewDate=new Date();
+let appointments=JSON.parse(localStorage.getItem("dogAppointments")||"[]");
+
+const pad=n=>String(n).padStart(2,"0");
+const key=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const formatDate=d=>new Intl.DateTimeFormat("es-ES",{day:"numeric",month:"long",year:"numeric"}).format(d);
+
+function render(){
+  document.getElementById("monthTitle").textContent=`${monthNames[viewDate.getMonth()]} ${viewDate.getFullYear()}`;
+  const cal=document.getElementById("calendar"); cal.innerHTML="";
+  const first=new Date(viewDate.getFullYear(),viewDate.getMonth(),1);
+  let start=(first.getDay()+6)%7;
+  const days=new Date(viewDate.getFullYear(),viewDate.getMonth()+1,0).getDate();
+  const prevDays=new Date(viewDate.getFullYear(),viewDate.getMonth(),0).getDate();
+  const todayKey=key(new Date());
+
+  for(let i=0;i<42;i++){
+    let n=i-start+1, d, muted=false;
+    if(n<1){d=new Date(viewDate.getFullYear(),viewDate.getMonth()-1,prevDays+n);muted=true}
+    else if(n>days){d=new Date(viewDate.getFullYear(),viewDate.getMonth()+1,n-days);muted=true}
+    else d=new Date(viewDate.getFullYear(),viewDate.getMonth(),n);
+    const cell=document.createElement("div");
+    cell.className="day"+(muted?" muted":"")+(key(d)===todayKey?" today":"");
+    cell.innerHTML=`<div class="num">${d.getDate()}</div>`;
+    appointments.filter(a=>a.date===key(d)).sort((a,b)=>a.time.localeCompare(b.time)).forEach(a=>{
+      const e=document.createElement("div"); e.className="event";
+      e.textContent=`${a.time} · ${a.pet}`;
+      cell.appendChild(e);
+    });
+    cal.appendChild(cell);
+  }
+  renderToday();
+}
+
+function renderToday(){
+  const container=document.getElementById("todayAppointments");
+  const today=key(new Date());
+  const list=appointments.filter(a=>a.date===today).sort((a,b)=>a.time.localeCompare(b.time));
+  if(!list.length){container.innerHTML='<div class="empty">No hay citas para hoy.</div>';return}
+  container.innerHTML=list.map(a=>`
+    <div class="appointment">
+      <div class="time">${a.time} · 🐶 ${escapeHtml(a.pet)}</div>
+      <div>${escapeHtml(a.owner)}</div>
+      <div class="badge">${escapeHtml(a.service)} · ${a.price?escapeHtml(a.price)+" €":"Sin precio"} · ${escapeHtml(a.payment)}</div>
+    </div>`).join("");
+}
+function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+
+function openModal(){
+  document.getElementById("modal").classList.add("show");
+  const now=new Date();
+  document.getElementById("date").value=key(now);
+  document.getElementById("time").value=`${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+function closeModal(){document.getElementById("modal").classList.remove("show");document.getElementById("appointmentForm").reset();document.getElementById("preview").style.display="none"}
+
+document.getElementById("newBtn").onclick=openModal;
+document.getElementById("closeBtn").onclick=closeModal;
+document.getElementById("cancelBtn").onclick=closeModal;
+document.getElementById("prev").onclick=()=>{viewDate.setMonth(viewDate.getMonth()-1);render()};
+document.getElementById("next").onclick=()=>{viewDate.setMonth(viewDate.getMonth()+1);render()};
+document.getElementById("today").onclick=()=>{viewDate=new Date();render()};
+
+document.getElementById("photo").addEventListener("change",e=>{
+ const f=e.target.files[0]; if(!f)return;
+ const img=document.getElementById("preview"); img.src=URL.createObjectURL(f); img.style.display="block";
+});
+
+document.getElementById("appointmentForm").addEventListener("submit",e=>{
+ e.preventDefault();
+ const a={
+  id:Date.now(),date:document.getElementById("date").value,time:document.getElementById("time").value,
+  owner:document.getElementById("owner").value,phone:document.getElementById("phone").value,
+  pet:document.getElementById("pet").value,service:document.getElementById("service").value,
+  price:document.getElementById("price").value,payment:document.getElementById("payment").value,
+  notes:document.getElementById("notes").value
+ };
+ appointments.push(a);
+ localStorage.setItem("dogAppointments",JSON.stringify(appointments));
+ closeModal(); viewDate=new Date(a.date+"T12:00:00"); render();
+ alert(`Cita guardada para ${a.pet}.\\n\\nEn la siguiente fase conectaremos esta cita con Google Calendar.`);
+});
+render();
+</script>
+</body>
+</html>
