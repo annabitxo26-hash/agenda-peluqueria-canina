@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Agenda Peluquería Canina</title>
+<!-- Google Calendar: Google Identity Services token flow for browser apps -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{
@@ -172,7 +173,7 @@ textarea{min-height:80px;resize:vertical}
 </div>
 
 <script>
-const GOOGLE_CLIENT_ID = "957627140301-7u39ue1sme5f0mg7s0qml5mp04jisdgm.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = "957627140301-5ss43u0pdq0k019spl5qpl0jjqb5ep00.apps.googleusercontent.com";
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const monthNames=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 let viewDate=new Date();
@@ -180,6 +181,8 @@ let appointments=JSON.parse(localStorage.getItem("dogAppointments")||"[]");
 let tokenClient=null;
 let accessToken=null;
 let pendingCalendarAppointment=null;
+let googleReady=false;
+let authCallback=null;
 
 const pad=n=>String(n).padStart(2,"0");
 const key=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -187,21 +190,35 @@ const key=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 
 function initGoogleIdentity(){
-  if(!window.google || !google.accounts || !google.accounts.oauth2) return;
+  if(!window.google || !google.accounts || !google.accounts.oauth2) return false;
   tokenClient=google.accounts.oauth2.initTokenClient({
     client_id:GOOGLE_CLIENT_ID,
     scope:CALENDAR_SCOPE,
-    callback:()=>{}
+    include_granted_scopes:true,
+    callback:(resp)=>{
+      if(resp.error){
+        console.error("Google OAuth error:", resp);
+        const detail=resp.error_description || resp.error || "Error desconocido";
+        alert("Google no pudo autorizar la agenda.\n\n"+detail+"\n\nSi aparece 401 invalid_client, comprueba que el Client ID del cliente Web sea exactamente el mismo que está en esta agenda y que el origen autorizado sea https://annabitx26-hash.github.io");
+        return;
+      }
+      accessToken=resp.access_token;
+      googleReady=true;
+      document.getElementById("calendarStatus").textContent="Google Calendar: conectado";
+      document.getElementById("googleBtn").textContent="✓ Google Calendar conectado";
+      if(authCallback){ const cb=authCallback; authCallback=null; cb(); }
+    }
   });
+  return true;
 }
 
 window.addEventListener("load",()=>{
   const wait=setInterval(()=>{
-    if(window.google && google.accounts && google.accounts.oauth2){
-      clearInterval(wait); initGoogleIdentity();
+    if(initGoogleIdentity()){
+      clearInterval(wait);
     }
   },200);
-  setTimeout(()=>clearInterval(wait),10000);
+  setTimeout(()=>clearInterval(wait),15000);
 });
 
 function requestGoogleAccess(callback){
@@ -209,18 +226,14 @@ function requestGoogleAccess(callback){
     alert("Google todavía se está cargando. Espera unos segundos y vuelve a pulsar el botón.");
     return;
   }
-  tokenClient.callback=(resp)=>{
-    if(resp.error){
-      console.error(resp);
-      alert("No se pudo conectar con Google Calendar. Si aparece 'Access blocked', comprueba que tu cuenta esté añadida como usuario de prueba en Google Cloud.");
-      return;
-    }
-    accessToken=resp.access_token;
-    document.getElementById("calendarStatus").textContent="Google Calendar: conectado";
-    document.getElementById("googleBtn").textContent="✓ Google Calendar conectado";
-    if(callback) callback();
-  };
-  tokenClient.requestAccessToken({prompt:accessToken?"":"consent"});
+  authCallback=callback||null;
+  try{
+    tokenClient.requestAccessToken({prompt:accessToken?"":"consent"});
+  }catch(err){
+    console.error(err);
+    authCallback=null;
+    alert("No se pudo iniciar la conexión con Google Calendar: "+err.message);
+  }
 }
 
 async function addAppointmentToGoogleCalendar(a){
