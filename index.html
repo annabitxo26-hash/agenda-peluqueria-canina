@@ -79,6 +79,7 @@ textarea{min-height:80px;resize:vertical}
   <div class="header-actions">
     <span class="status" id="calendarStatus">Google Calendar: no conectado</span>
     <button class="google" id="googleBtn">📅 Conectar Google Calendar</button>
+    <button class="secondary" id="syncBtn">🔄 Sincronizar</button>
     <button class="primary" id="newBtn">＋ Nueva cita</button>
   </div>
 </header>
@@ -210,6 +211,7 @@ function initGoogleIdentity(){
       document.getElementById("calendarStatus").textContent="Google Calendar: conectado";
       document.getElementById("googleBtn").textContent="✓ Google Calendar conectado";
       if(authCallback){ const cb=authCallback; authCallback=null; cb(); }
+      syncFromGoogleCalendar();
     }
   });
   return true;
@@ -261,7 +263,8 @@ async function addAppointmentToGoogleCalendar(a){
       `Cobro: ${a.payment}\n`+
       `Observaciones: ${a.notes||"—"}`,
     start:{dateTime:start.toISOString()},
-    end:{dateTime:end.toISOString()}
+    end:{dateTime:end.toISOString()},
+    extendedProperties:{private:{dogGroomingId:String(a.id)}}
   };
 
   try{
@@ -452,6 +455,56 @@ async function updateAppointmentInGoogleCalendar(a){
   }
 }
 
+async function syncFromGoogleCalendar(){
+  if(!accessToken || !appointments.some(a=>a.googleEventId)) return;
+  const linked=appointments.filter(a=>a.googleEventId);
+  let changed=false;
+  for(const a of linked){
+    try{
+      const res=await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(a.googleEventId)}`,{
+        headers:{"Authorization":"Bearer "+accessToken}
+      });
+      if(res.status===404 || res.status===410){
+        appointments=appointments.filter(x=>x.id!==a.id);
+        changed=true;
+        continue;
+      }
+      if(res.status===401){
+        accessToken=null;
+        document.getElementById("calendarStatus").textContent="Google Calendar: no conectado";
+        document.getElementById("googleBtn").textContent="📅 Conectar Google Calendar";
+        return;
+      }
+      if(!res.ok) continue;
+      const ev=await res.json();
+      if(ev.status==="cancelled"){
+        appointments=appointments.filter(x=>x.id!==a.id);
+        changed=true;
+        continue;
+      }
+      // Si la cita se ha movido en Google Calendar, actualizamos fecha y hora aquí.
+      if(ev.start?.dateTime){
+        const dt=new Date(ev.start.dateTime);
+        const newDate=`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
+        const newTime=`${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+        if(a.date!==newDate || a.time!==newTime){
+          a.date=newDate; a.time=newTime; changed=true;
+        }
+      }
+    }catch(err){ console.error("Error sincronizando",err); }
+  }
+  if(changed){
+    localStorage.setItem("dogAppointments",JSON.stringify(appointments));
+    render();
+  }
+}
+
+document.getElementById("syncBtn").onclick=async()=>{
+  if(!accessToken){ requestGoogleAccess(()=>syncFromGoogleCalendar()); return; }
+  await syncFromGoogleCalendar();
+  alert("Google Calendar y la agenda han sido sincronizados.");
+};
+
 async function deleteAppointment(){
   if(editingId===null)return;
   const a=appointments.find(x=>x.id===editingId);
@@ -469,6 +522,8 @@ async function deleteAppointment(){
   localStorage.setItem("dogAppointments",JSON.stringify(appointments));
   closeModal();render();
 }
+
+setInterval(()=>{ if(accessToken) syncFromGoogleCalendar(); }, 30000);
 
 </script>
 </body>
