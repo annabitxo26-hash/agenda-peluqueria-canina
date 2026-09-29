@@ -40,6 +40,7 @@ main{max-width:1200px;margin:0 auto;padding:24px}
 .side-title{font-size:18px;font-weight:700;margin-bottom:13px}
 .appointment{padding:12px 0;border-bottom:1px solid var(--line)}
 .appointment:last-child{border-bottom:0}
+.danger{background:#fff0f0;border:1px solid #e2a0a0;color:#a33;border-radius:8px;padding:10px 14px;cursor:pointer}.event{cursor:pointer}
 .time{font-weight:700}
 .badge{display:inline-block;padding:3px 7px;border-radius:20px;background:#f0f0ed;font-size:11px;margin-top:5px}
 .empty{color:var(--muted);padding:15px 0}
@@ -111,7 +112,7 @@ textarea{min-height:80px;resize:vertical}
 <div class="modal-backdrop" id="modal">
   <div class="modal">
     <div class="modal-head">
-      <h2>🐶 Nueva cita</h2>
+      <h2 id="modalTitle">🐶 Nueva cita</h2>
       <button class="close" id="closeBtn">×</button>
     </div>
     <form id="appointmentForm">
@@ -166,7 +167,8 @@ textarea{min-height:80px;resize:vertical}
       </div>
       <div class="actions">
         <button type="button" class="secondary" id="cancelBtn">Cancelar</button>
-        <button type="submit" class="primary">Guardar cita</button>
+        <button type="button" class="danger" id="deleteBtn" style="display:none">Eliminar cita</button>
+        <button type="submit" class="primary" id="saveBtn">Guardar cita</button>
       </div>
     </form>
   </div>
@@ -183,6 +185,7 @@ let accessToken=null;
 let pendingCalendarAppointment=null;
 let googleReady=false;
 let authCallback=null;
+let editingId=null;
 
 const pad=n=>String(n).padStart(2,"0");
 const key=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -302,6 +305,8 @@ function render(){
     appointments.filter(a=>a.date===key(d)).sort((a,b)=>a.time.localeCompare(b.time)).forEach(a=>{
       const e=document.createElement("div");e.className="event";
       e.textContent=`${a.time} · ${a.pet}`;
+      e.title="Pulsa para modificar la cita";
+      e.addEventListener("click",(ev)=>{ev.stopPropagation();openEditModal(a.id)});
       cell.appendChild(e);
     });
     cal.appendChild(cell);
@@ -323,24 +328,58 @@ function renderToday(){
       <div>${escapeHtml(a.owner)}</div>
       <div class="badge">${escapeHtml(a.service)} · ${a.price?escapeHtml(a.price)+" €":"Sin precio"} · ${escapeHtml(a.payment)}</div>
       <div class="appt-actions">
+        <button class="secondary editBtn">✏️ Modificar</button>
         <button class="google" data-id="${a.id}" ${a.googleEventId?"disabled":""}>${a.googleEventId?"✓ Añadida a Google Calendar":"📅 Añadir a Google Calendar"}</button>
       </div>`;
-    div.querySelector("button").addEventListener("click",()=>{if(!a.googleEventId)addAppointmentToGoogleCalendar(a)});
+    div.querySelector(".editBtn").addEventListener("click",()=>openEditModal(a.id));
+    div.querySelector(".google").addEventListener("click",()=>{if(!a.googleEventId)addAppointmentToGoogleCalendar(a)});
     container.appendChild(div);
   });
 }
 
 function openModal(){
+  editingId=null;
+  document.getElementById("modalTitle").textContent="🐶 Nueva cita";
+  document.getElementById("saveBtn").textContent="Guardar cita";
+  document.getElementById("deleteBtn").style.display="none";
+  document.getElementById("appointmentForm").reset();
+  document.getElementById("preview").style.display="none";
   document.getElementById("modal").classList.add("show");
   const now=new Date();
   document.getElementById("date").value=key(now);
   document.getElementById("time").value=`${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
-function closeModal(){document.getElementById("modal").classList.remove("show");document.getElementById("appointmentForm").reset();document.getElementById("preview").style.display="none"}
+function openEditModal(id){
+  const a=appointments.find(x=>x.id===id);
+  if(!a)return;
+  editingId=id;
+  document.getElementById("modalTitle").textContent="✏️ Modificar cita";
+  document.getElementById("saveBtn").textContent="Guardar cambios";
+  document.getElementById("deleteBtn").style.display="inline-block";
+  document.getElementById("date").value=a.date;
+  document.getElementById("time").value=a.time;
+  document.getElementById("owner").value=a.owner||"";
+  document.getElementById("phone").value=a.phone||"";
+  document.getElementById("pet").value=a.pet||"";
+  document.getElementById("service").value=a.service||"";
+  document.getElementById("price").value=a.price||"";
+  document.getElementById("payment").value=a.payment||"Pendiente";
+  document.getElementById("notes").value=a.notes||"";
+  document.getElementById("photo").value="";
+  document.getElementById("preview").style.display="none";
+  document.getElementById("modal").classList.add("show");
+}
+function closeModal(){
+  document.getElementById("modal").classList.remove("show");
+  document.getElementById("appointmentForm").reset();
+  document.getElementById("preview").style.display="none";
+  editingId=null;
+}
 
 document.getElementById("newBtn").onclick=openModal;
 document.getElementById("closeBtn").onclick=closeModal;
 document.getElementById("cancelBtn").onclick=closeModal;
+document.getElementById("deleteBtn").onclick=deleteAppointment;
 document.getElementById("prev").onclick=()=>{viewDate.setMonth(viewDate.getMonth()-1);render()};
 document.getElementById("next").onclick=()=>{viewDate.setMonth(viewDate.getMonth()+1);render()};
 document.getElementById("today").onclick=()=>{viewDate=new Date();render()};
@@ -351,18 +390,87 @@ document.getElementById("photo").addEventListener("change",e=>{
  const img=document.getElementById("preview");img.src=URL.createObjectURL(f);img.style.display="block";
 });
 
-document.getElementById("appointmentForm").addEventListener("submit",e=>{
+document.getElementById("appointmentForm").addEventListener("submit",async e=>{
  e.preventDefault();
- const a={
-  id:Date.now(),date:document.getElementById("date").value,time:document.getElementById("time").value,
+ const data={
+  date:document.getElementById("date").value,time:document.getElementById("time").value,
   owner:document.getElementById("owner").value,phone:document.getElementById("phone").value,
   pet:document.getElementById("pet").value,service:document.getElementById("service").value,
   price:document.getElementById("price").value,payment:document.getElementById("payment").value,
   notes:document.getElementById("notes").value
  };
- appointments.push(a);
- localStorage.setItem("dogAppointments",JSON.stringify(appointments));
- closeModal();viewDate=new Date(a.date+"T12:00:00");render();
+ if(editingId!==null){
+   const a=appointments.find(x=>x.id===editingId);
+   if(!a)return;
+   Object.assign(a,data);
+   localStorage.setItem("dogAppointments",JSON.stringify(appointments));
+   closeModal(); viewDate=new Date(a.date+"T12:00:00"); render();
+   if(a.googleEventId) await updateAppointmentInGoogleCalendar(a);
+   else if(accessToken) await addAppointmentToGoogleCalendar(a);
+   alert(`Los cambios de ${a.pet} se han guardado.`);
+ }else{
+   const a={id:Date.now(),...data};
+   appointments.push(a);
+   localStorage.setItem("dogAppointments",JSON.stringify(appointments));
+   closeModal();viewDate=new Date(a.date+"T12:00:00");render();
+   if(accessToken) await addAppointmentToGoogleCalendar(a);
+   else alert(`Cita guardada para ${a.pet}. Si quieres, puedes añadirla a Google Calendar desde la cita.`);
+ }
+});
+
+async function updateAppointmentInGoogleCalendar(a){
+  if(!a.googleEventId)return;
+  if(!accessToken){
+    requestGoogleAccess(()=>updateAppointmentInGoogleCalendar(a));
+    return;
+  }
+  const start=new Date(`${a.date}T${a.time}`);
+  const end=new Date(start.getTime()+60*60*1000);
+  const body={
+    summary:`🐶 ${a.pet} — ${a.service}`,
+    description:
+      `Titular: ${a.owner}\n`+
+      `Teléfono: ${a.phone||"—"}\n`+
+      `Servicio: ${a.service}\n`+
+      `Precio: ${a.price?a.price+" €":"—"}\n`+
+      `Cobro: ${a.payment}\n`+
+      `Observaciones: ${a.notes||"—"}`,
+    start:{dateTime:start.toISOString()},
+    end:{dateTime:end.toISOString()}
+  };
+  try{
+    const res=await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(a.googleEventId)}?sendUpdates=none`,{
+      method:"PATCH",
+      headers:{"Authorization":"Bearer "+accessToken,"Content-Type":"application/json"},
+      body:JSON.stringify(body)
+    });
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok)throw new Error(data.error?.message||"Error de Google Calendar");
+  }catch(err){
+    console.error(err);
+    alert("La cita se ha modificado en la agenda, pero no se pudo actualizar Google Calendar.");
+  }
+}
+
+async function deleteAppointment(){
+  if(editingId===null)return;
+  const a=appointments.find(x=>x.id===editingId);
+  if(!a)return;
+  if(!confirm(`¿Quieres eliminar la cita de ${a.pet}?`))return;
+  if(a.googleEventId && accessToken){
+    try{
+      await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(a.googleEventId)}?sendUpdates=none`,{
+        method:"DELETE",
+        headers:{"Authorization":"Bearer "+accessToken}
+      });
+    }catch(err){console.error(err);}
+  }
+  appointments=appointments.filter(x=>x.id!==editingId);
+  localStorage.setItem("dogAppointments",JSON.stringify(appointments));
+  closeModal();render();
+}
+
+render();
  alert(`Cita guardada para ${a.pet}. Ahora puedes pulsar "Añadir a Google Calendar" en la cita de hoy.`);
 });
 render();
