@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agenda Peluquería Canina</title>
+<!-- Google Calendar: Google Identity Services token flow for browser apps -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+:root{
+  --bg:#f7f7f5; --card:#fff; --text:#252525; --muted:#777;
+  --line:#e8e8e5; --accent:#6f8f72; --accent2:#edf4ed; --danger:#b85c5c;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text)}
+header{background:#fff;border-bottom:1px solid var(--line);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap}
+.brand{font-size:22px;font-weight:700}
+.brand span{font-size:28px;margin-right:8px}
+.header-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button{border:0;border-radius:10px;padding:11px 16px;font-size:14px;cursor:pointer}
+.primary{background:var(--accent);color:#fff}
+.secondary{background:#f0f0ed;color:#333}
+.google{background:#fff;border:1px solid #d9d9d5;color:#333}
+.status{font-size:12px;color:var(--muted)}
+main{max-width:1200px;margin:0 auto;padding:24px}
+.toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px}
+.toolbar h1{margin:0;font-size:28px}
+.nav{display:flex;gap:7px;align-items:center}
+.nav button{padding:8px 11px}
+.grid{display:grid;grid-template-columns:1.5fr .9fr;gap:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.calendar-head{display:grid;grid-template-columns:repeat(7,1fr);color:var(--muted);font-size:12px;margin-bottom:8px}
+.calendar-head div{text-align:center}
+.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.day{min-height:88px;border:1px solid var(--line);border-radius:9px;padding:7px;background:#fff}
+.day.muted{color:#aaa;background:#fafafa}
+.day.today{outline:2px solid #9ab09c}
+.day .num{font-weight:700;font-size:13px}
+.event{margin-top:6px;padding:5px 6px;border-radius:7px;background:var(--accent2);font-size:11px;line-height:1.3}
+.side-title{font-size:18px;font-weight:700;margin-bottom:13px}
+.appointment{padding:12px 0;border-bottom:1px solid var(--line)}
+.appointment:last-child{border-bottom:0}
+.danger{background:#fff0f0;border:1px solid #e2a0a0;color:#a33;border-radius:8px;padding:10px 14px;cursor:pointer}.event{cursor:pointer}
+.time{font-weight:700}
+.badge{display:inline-block;padding:3px 7px;border-radius:20px;background:#f0f0ed;font-size:11px;margin-top:5px}
+.empty{color:var(--muted);padding:15px 0}
+.appt-actions{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap}
+.appt-actions button{padding:7px 10px;font-size:12px}
+.modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);align-items:center;justify-content:center;padding:20px;z-index:10}
+.modal-backdrop.show{display:flex}
+.modal{background:#fff;border-radius:18px;width:min(720px,100%);max-height:92vh;overflow:auto;padding:24px}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.modal h2{margin:0}
+.close{background:#f1f1ef;border-radius:50%;width:36px;height:36px;padding:0}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field.full{grid-column:1/-1}
+label{font-size:13px;font-weight:700}
+input,select,textarea{font:inherit;border:1px solid #d9d9d5;border-radius:9px;padding:10px;background:#fff}
+textarea{min-height:80px;resize:vertical}
+.photo-preview{display:flex;align-items:center;gap:12px}
+.preview{width:70px;height:70px;border-radius:12px;background:#f0f0ed;object-fit:cover;display:none}
+.actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}
+.notice{padding:10px 12px;border-radius:10px;background:#f5f5f2;color:#555;font-size:12px;margin-top:10px}
+.panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}.finance-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}.stat{padding:14px;border-radius:12px;background:#f5f5f2}.stat strong{display:block;font-size:20px;margin-top:5px}.client-row,.expense-row{padding:10px 0;border-bottom:1px solid var(--line)}.client-row button{margin-top:7px}.history-entry{padding:10px;margin:8px 0;background:#f7f7f5;border-radius:10px}.small{font-size:12px;color:var(--muted)}.inline-form{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.inline-form input,.inline-form select{flex:1;min-width:120px}.history-modal{width:min(760px,100%)}@media(max-width:800px){.panel-grid{grid-template-columns:1fr}.finance-stats{grid-template-columns:1fr}}
+@media(max-width:800px){
+ .grid{grid-template-columns:1fr}
+ .form{grid-template-columns:1fr}
+ .field.full{grid-column:auto}
+ main{padding:14px}
+ header{padding:14px}
+ .toolbar{align-items:flex-start;flex-direction:column}
+ .day{min-height:65px}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span>🐾</span>Agenda Peluquería Canina</div>
+  <div class="header-actions">
+    <span class="status" id="calendarStatus">Google Calendar: no conectado</span>
+    <button class="google" id="googleBtn">📅 Conectar Google Calendar</button>
+    <button class="secondary" id="syncBtn">🔄 Sincronizar</button>
+    <button class="secondary" id="clientsBtn">🐶 Clientes e historial</button>
+    <button class="primary" id="newBtn">＋ Nueva cita</button>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <h1 id="monthTitle"></h1>
+    <div class="nav">
+      <button class="secondary" id="prev">‹</button>
+      <button class="secondary" id="today">Hoy</button>
+      <button class="secondary" id="next">›</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <div class="calendar-head">
+        <div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div>
+      </div>
+      <div class="calendar" id="calendar"></div>
+    </section>
+
+    <aside class="card">
+      <div class="side-title">Citas de hoy</div>
+      <div id="todayAppointments"></div>
+      <div class="notice">Las citas guardadas aquí se mantienen en este navegador. Google Calendar se conecta por separado.</div>
+    </aside>
+  </div>
+
+  <div class="panel-grid">
+    <section class="card" id="clientsPanel">
+      <div class="side-title">🐶 Clientes e historial de visitas</div>
+      <input id="clientSearch" type="search" placeholder="Buscar titular o mascota..." style="width:100%">
+      <div class="small" style="margin-top:8px">Los clientes aparecen automáticamente al registrar sus citas.</div>
+      <div id="clientList"></div>
+      <div id="clientHistory" style="display:none;margin-top:16px"></div>
+    </section>
+    <section class="card" id="financePanel">
+      <div class="side-title">💶 Control mensual</div>
+      <div class="field"><label for="financeMonth">Mes a consultar</label><input type="month" id="financeMonth"></div>
+      <div class="finance-stats">
+        <div class="stat">Ingresos cobrados<strong id="incomeTotal">0,00 €</strong></div>
+        <div class="stat">Gastos<strong id="expenseTotal">0,00 €</strong></div>
+        <div class="stat">Balance<strong id="balanceTotal">0,00 €</strong></div>
+      </div>
+      <div class="small">Los ingresos cuentan solo las citas marcadas como «Pagado». El balance es ingresos cobrados menos gastos registrados.</div>
+      <h3 style="margin-bottom:6px">Añadir gasto</h3>
+      <form id="expenseForm" class="inline-form">
+        <input id="expenseDate" type="date" required aria-label="Fecha del gasto">
+        <input id="expenseConcept" type="text" placeholder="Concepto (productos, alquiler...)" required aria-label="Concepto del gasto">
+        <input id="expenseAmount" type="number" min="0.01" step="0.01" placeholder="Importe €" required aria-label="Importe del gasto">
+        <button class="primary" type="submit">Añadir gasto</button>
+      </form>
+      <div id="expenseList"></div>
+    </section>
+  </div>
+</main>
+
+<div class="modal-backdrop" id="modal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="modalTitle">🐶 Nueva cita</h2>
+      <button class="close" id="closeBtn">×</button>
+    </div>
+    <form id="appointmentForm">
+      <div class="form">
+        <div class="field">
+          <label for="date">Fecha *</label>
+          <input type="date" id="date" required>
+        </div>
+        <div class="field">
+          <label for="time">Hora *</label>
+          <input type="time" id="time" required>
+        </div>
+        <div class="field">
+          <label for="owner">Nombre del titular *</label>
+          <input type="text" id="owner" placeholder="Ej. María García" required>
+        </div>
+        <div class="field">
+          <label for="phone">Teléfono</label>
+          <input type="tel" id="phone" placeholder="Ej. 600 123 456">
+        </div>
+        <div class="field">
+          <label for="pet">Nombre de la mascota *</label>
+          <input type="text" id="pet" placeholder="Ej. Luna" required>
+        </div>
+        <div class="field">
+          <label for="breed">Raza del perro</label>
+          <input type="text" id="breed" placeholder="Ej. Caniche, Yorkshire, mestizo">
+        </div>
+        <div class="field">
+          <label for="service">Arreglo / servicio *</label>
+          <select id="service" required>
+            <option value="">Selecciona...</option>
+            <option>Baño</option><option>Baño + corte</option><option>Corte</option>
+            <option>Deslanado</option><option>Higiene</option><option>Corte de uñas</option><option>Otro</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="price">Precio (€)</label>
+          <input type="number" id="price" min="0" step="0.50" placeholder="35">
+        </div>
+        <div class="field">
+          <label for="payment">Cobro</label>
+          <select id="payment"><option>Pendiente</option><option>Pagado</option></select>
+        </div>
+        <div class="field full">
+          <label>Foto de la mascota</label>
+          <div class="photo-preview">
+            <img class="preview" id="preview" alt="Vista previa">
+            <input type="file" id="photo" accept="image/*">
+          </div>
+        </div>
+        <div class="field full">
+          <label for="notes">Observaciones</label>
+          <textarea id="notes" placeholder="Tipo de corte, comportamiento, preferencias del titular..."></textarea>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" class="secondary" id="cancelBtn">Cancelar</button>
+        <button type="button" class="danger" id="deleteBtn" style="display:none">Eliminar cita</button>
+        <button type="submit" class="primary" id="saveBtn">Guardar cita</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const GOOGLE_CLIENT_ID = "957627140301-5ss43u0pdq0k019spl5qpl0jjqb5ep00.apps.googleusercontent.com";
+const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+const monthNames=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+let viewDate=new Date();
+let appointments=JSON.parse(localStorage.getItem("dogAppointments")||"[]");
+let expenses=JSON.parse(localStorage.getItem("dogGroomingExpenses")||"[]");
+let tokenClient=null;
+let accessToken=null;
+let pendingCalendarAppointment=null;
+let googleReady=false;
+let authCallback=null;
+let editingId=null;
+
+const pad=n=>String(n).padStart(2,"0");
+const key=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+
+function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+
+function initGoogleIdentity(){
+  if(!window.google || !google.accounts || !google.accounts.oauth2) return false;
+  tokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:GOOGLE_CLIENT_ID,
+    scope:CALENDAR_SCOPE,
+    include_granted_scopes:true,
+    callback:(resp)=>{
+      if(resp.error){
+        console.error("Google OAuth error:", resp);
+        const detail=resp.error_description || resp.error || "Error desconocido";
+        alert("Google no pudo autorizar la agenda.\n\n"+detail+"\n\nSi aparece 401 invalid_client, comprueba que el Client ID del cliente Web sea exactamente el mismo que está en esta agenda y que el origen autorizado sea https://annabitx26-hash.github.io");
+        return;
+      }
+      accessToken=resp.access_token;
+      googleReady=true;
+      document.getElementById("calendarStatus").textContent="Google Calendar: conectado";
+      document.getElementById("googleBtn").textContent="✓ Google Calendar conectado";
+      if(authCallback){ const cb=authCallback; authCallback=null; cb(); }
+      syncFromGoogleCalendar();
+    }
+  });
+  return true;
+}
+
+window.addEventListener("load",()=>{
+  const wait=setInterval(()=>{
+    if(initGoogleIdentity()){
+      clearInterval(wait);
+    }
+  },200);
+  setTimeout(()=>clearInterval(wait),15000);
+});
+
+function requestGoogleAccess(callback){
+  if(!tokenClient){
+    alert("Google todavía se está cargando. Espera unos segundos y vuelve a pulsar el botón.");
+    return;
+  }
+  authCallback=callback||null;
+  try{
+    tokenClient.requestAccessToken({prompt:accessToken?"":"consent"});
+  }catch(err){
+    console.error(err);
+    authCallback=null;
+    alert("No se pudo iniciar la conexión con Google Calendar: "+err.message);
+  }
+}
+
+async function addAppointmentToGoogleCalendar(a){
+  if(!accessToken){
+    pendingCalendarAppointment=a;
+    requestGoogleAccess(()=>{
+      const p=pendingCalendarAppointment; pendingCalendarAppointment=null;
+      if(p) addAppointmentToGoogleCalendar(p);
+    });
+    return;
+  }
+
+  const start=new Date(`${a.date}T${a.time}`);
+  const end=new Date(start.getTime()+60*60*1000);
+  const body={
+    summary:`🐶 ${a.pet} — ${a.service}`,
+    description:
+      `Titular: ${a.owner}\n`+
+      `Teléfono: ${a.phone||"—"}\n`+
+      `Raza: ${a.breed||"—"}\n`+
+      `Servicio: ${a.service}\n`+
+      `Precio: ${a.price?a.price+" €":"—"}\n`+
+      `Cobro: ${a.payment}\n`+
+      `Observaciones: ${a.notes||"—"}`,
+    start:{dateTime:start.toISOString()},
+    end:{dateTime:end.toISOString()},
+    extendedProperties:{private:{dogGroomingId:String(a.id)}}
+  };
+
+  try{
+    const res=await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=none", {
+      method:"POST",
+      headers:{"Authorization":"Bearer "+accessToken,"Content-Type":"application/json"},
+      body:JSON.stringify(body)
+    });
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error?.message||"Error de Google Calendar");
+    a.googleEventId=data.id;
+    localStorage.setItem("dogAppointments",JSON.stringify(appointments));
+    render();
+    alert(`La cita de ${a.pet} se ha añadido a Google Calendar.`);
+  }catch(err){
+    console.error(err);
+    accessToken=null;
+    document.getElementById("calendarStatus").textContent="Google Calendar: no conectado";
+    document.getElementById("googleBtn").textContent="📅 Conectar Google Calendar";
+    alert("No se pudo añadir la cita a Google Calendar. Vuelve a conectar Google Calendar e inténtalo de nuevo.");
+  }
+}
+
+function render(){
+  document.getElementById("monthTitle").textContent=`${monthNames[viewDate.getMonth()]} ${viewDate.getFullYear()}`;
+  const cal=document.getElementById("calendar"); cal.innerHTML="";
+  const first=new Date(viewDate.getFullYear(),viewDate.getMonth(),1);
+  let start=(first.getDay()+6)%7;
+  const days=new Date(viewDate.getFullYear(),viewDate.getMonth()+1,0).getDate();
+  const prevDays=new Date(viewDate.getFullYear(),viewDate.getMonth(),0).getDate();
+  const todayKey=key(new Date());
+
+  for(let i=0;i<42;i++){
+    let n=i-start+1,d,muted=false;
+    if(n<1){d=new Date(viewDate.getFullYear(),viewDate.getMonth()-1,prevDays+n);muted=true}
+    else if(n>days){d=new Date(viewDate.getFullYear(),viewDate.getMonth()+1,n-days);muted=true}
+    else d=new Date(viewDate.getFullYear(),viewDate.getMonth(),n);
+    const cell=document.createElement("div");
+    cell.className="day"+(muted?" muted":"")+(key(d)===todayKey?" today":"");
+    cell.innerHTML=`<div class="num">${d.getDate()}</div>`;
+    appointments.filter(a=>a.date===key(d)).sort((a,b)=>a.time.localeCompare(b.time)).forEach(a=>{
+      const e=document.createElement("div");e.className="event";
+      e.textContent=`${a.time} · ${a.pet}`;
+      e.title="Pulsa para modificar la cita";
+      e.addEventListener("click",(ev)=>{ev.stopPropagation();openEditModal(a.id)});
+      cell.appendChild(e);
+    });
+    cal.appendChild(cell);
+  }
+  renderToday();
+  renderPanels();
+}
+
+function renderToday(){
+  const container=document.getElementById("todayAppointments");
+  const today=key(new Date());
+  const list=appointments.filter(a=>a.date===today).sort((a,b)=>a.time.localeCompare(b.time));
+  if(!list.length){container.innerHTML='<div class="empty">No hay citas para hoy.</div>';return}
+  container.innerHTML="";
+  list.forEach(a=>{
+    const div=document.createElement("div");
+    div.className="appointment";
+    div.innerHTML=`
+      <div class="time">${a.time} · 🐶 ${escapeHtml(a.pet)}</div>
+      <div>${escapeHtml(a.owner)}</div>
+      <div class="badge">${escapeHtml(a.service)} · ${a.price?escapeHtml(a.price)+" €":"Sin precio"} · ${escapeHtml(a.payment)}</div>
+      <div class="appt-actions">
+        <button class="secondary editBtn">✏️ Modificar</button>
+        <button class="google" data-id="${a.id}" ${a.googleEventId?"disabled":""}>${a.googleEventId?"✓ Añadida a Google Calendar":"📅 Añadir a Google Calendar"}</button>
+      </div>`;
+    div.querySelector(".editBtn").addEventListener("click",()=>openEditModal(a.id));
+    div.querySelector(".google").addEventListener("click",()=>{if(!a.googleEventId)addAppointmentToGoogleCalendar(a)});
+    container.appendChild(div);
+  });
+}
+
+function openModal(){
+  editingId=null;
+  document.getElementById("modalTitle").textContent="🐶 Nueva cita";
+  document.getElementById("saveBtn").textContent="Guardar cita";
+  document.getElementById("deleteBtn").style.display="none";
+  document.getElementById("appointmentForm").reset();
+  document.getElementById("preview").style.display="none";
+  document.getElementById("modal").classList.add("show");
+  const now=new Date();
+  document.getElementById("date").value=key(now);
+  document.getElementById("time").value=`${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+function openEditModal(id){
+  const a=appointments.find(x=>x.id===id);
+  if(!a)return;
+  editingId=id;
+  document.getElementById("modalTitle").textContent="✏️ Modificar cita";
+  document.getElementById("saveBtn").textContent="Guardar cambios";
+  document.getElementById("deleteBtn").style.display="inline-block";
+  document.getElementById("date").value=a.date;
+  document.getElementById("time").value=a.time;
+  document.getElementById("owner").value=a.owner||"";
+  document.getElementById("phone").value=a.phone||"";
+  document.getElementById("pet").value=a.pet||"";
+  document.getElementById("breed").value=a.breed||"";
+  document.getElementById("service").value=a.service||"";
+  document.getElementById("price").value=a.price||"";
+  document.getElementById("payment").value=a.payment||"Pendiente";
+  document.getElementById("notes").value=a.notes||"";
+  document.getElementById("photo").value="";
+  document.getElementById("preview").style.display="none";
+  document.getElementById("modal").classList.add("show");
+}
+function closeModal(){
+  document.getElementById("modal").classList.remove("show");
+  document.getElementById("appointmentForm").reset();
+  document.getElementById("preview").style.display="none";
+  editingId=null;
+}
+
+document.getElementById("newBtn").onclick=openModal;
+document.getElementById("closeBtn").onclick=closeModal;
+document.getElementById("cancelBtn").onclick=closeModal;
+document.getElementById("deleteBtn").onclick=deleteAppointment;
+document.getElementById("prev").onclick=()=>{viewDate.setMonth(viewDate.getMonth()-1);render()};
+document.getElementById("next").onclick=()=>{viewDate.setMonth(viewDate.getMonth()+1);render()};
+document.getElementById("today").onclick=()=>{viewDate=new Date();render()};
+document.getElementById("googleBtn").onclick=()=>requestGoogleAccess();
+
+document.getElementById("photo").addEventListener("change",e=>{
+ const f=e.target.files[0];if(!f)return;
+ const img=document.getElementById("preview");img.src=URL.createObjectURL(f);img.style.display="block";
+});
+
+document.getElementById("appointmentForm").addEventListener("submit",async e=>{
+ e.preventDefault();
+ const data={
+  date:document.getElementById("date").value,time:document.getElementById("time").value,
+  owner:document.getElementById("owner").value,phone:document.getElementById("phone").value,
+  pet:document.getElementById("pet").value,breed:document.getElementById("breed").value,service:document.getElementById("service").value,
+  price:document.getElementById("price").value,payment:document.getElementById("payment").value,
+  notes:document.getElementById("notes").value
+ };
+ if(editingId!==null){
+   const a=appointments.find(x=>x.id===editingId);
+   if(!a)return;
+   Object.assign(a,data);
+   localStorage.setItem("dogAppointments",JSON.stringify(appointments));
+   closeModal(); viewDate=new Date(a.date+"T12:00:00"); render();
+   if(a.googleEventId) await updateAppointmentInGoogleCalendar(a);
+   else if(accessToken) await addAppointmentToGoogleCalendar(a);
+   alert(`Los cambios de ${a.pet} se han guardado.`);
+ }else{
+   const a={id:Date.now(),...data};
+   appointments.push(a);
+   localStorage.setItem("dogAppointments",JSON.stringify(appointments));
+   closeModal();viewDate=new Date(a.date+"T12:00:00");render();
+   if(accessToken) await addAppointmentToGoogleCalendar(a);
+   else alert(`Cita guardada para ${a.pet}. Si quieres, puedes añadirla a Google Calendar desde la cita.`);
+ }
+});
+
+async function updateAppointmentInGoogleCalendar(a){
+  if(!a.googleEventId)return;
+  if(!accessToken){
+    requestGoogleAccess(()=>updateAppointmentInGoogleCalendar(a));
+    return;
+  }
+  const start=new Date(`${a.date}T${a.time}`);
+  const end=new Date(start.getTime()+60*60*1000);
+  const body={
+    summary:`🐶 ${a.pet} — ${a.service}`,
+    description:
+      `Titular: ${a.owner}\n`+
+      `Teléfono: ${a.phone||"—"}\n`+
+      `Raza: ${a.breed||"—"}\n`+
+      `Servicio: ${a.service}\n`+
+      `Precio: ${a.price?a.price+" €":"—"}\n`+
+      `Cobro: ${a.payment}\n`+
+      `Observaciones: ${a.notes||"—"}`,
+    start:{dateTime:start.toISOString()},
+    end:{dateTime:end.toISOString()}
+  };
+  try{
+    const res=await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(a.googleEventId)}?sendUpdates=none`,{
+      method:"PATCH",
+      headers:{"Authorization":"Bearer "+accessToken,"Content-Type":"application/json"},
+      body:JSON.stringify(body)
+    });
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok)throw new Error(data.error?.message||"Error de Google Calendar");
+  }catch(err){
+    console.error(err);
+    alert("La cita se ha modificado en la agenda, pero no se pudo actualizar Google Calendar.");
+  }
+}
+
+async function syncFromGoogleCalendar(){
+  if(!accessToken) return;
+  let changed=false;
+
+  // 1) Importar eventos creados directamente en Google Calendar.
+  // Se consulta un intervalo amplio para que también entren citas futuras.
+  try{
+    const now=new Date();
+    const timeMin=new Date(now.getFullYear(), now.getMonth()-2, 1).toISOString();
+    const timeMax=new Date(now.getFullYear()+1, now.getMonth()+2, 1).toISOString();
+    let pageToken=null;
+    do{
+      const params=new URLSearchParams({
+        timeMin, timeMax, singleEvents:'true', orderBy:'startTime', maxResults:'250'
+      });
+      if(pageToken) params.set('pageToken',pageToken);
+      const res=await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`,{
+        headers:{'Authorization':'Bearer '+accessToken}
+      });
+      if(res.status===401){
+        accessToken=null;
+        document.getElementById('calendarStatus').textContent='Google Calendar: no conectado';
+        document.getElementById('googleBtn').textContent='📅 Conectar Google Calendar';
+        alert('La autorización de Google ha caducado. Pulsa «Conectar Google Calendar» y vuelve a sincronizar.');
+        return;
+      }
+      const payload=await res.json();
+      if(!res.ok) throw new Error(payload.error?.message||'No se pudieron leer los eventos de Google Calendar');
+      for(const ev of (payload.items||[])){
+        if(ev.status==='cancelled' || !ev.id || (!ev.start?.dateTime && !ev.start?.date)) continue;
+        // Si ya conocemos este evento, no lo duplicamos.
+        let existing=appointments.find(a=>a.googleEventId===ev.id);
+        const startDate=ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(ev.start.date+'T09:00:00');
+        const evDate=`${startDate.getFullYear()}-${pad(startDate.getMonth()+1)}-${pad(startDate.getDate())}`;
+        const evTime=ev.start.dateTime ? `${pad(startDate.getHours())}:${pad(startDate.getMinutes())}` : '09:00';
+        const summary=(ev.summary||'Cita de Google Calendar').replace(/^🐶\s*/, '');
+        const parts=summary.split(/\s+[—–-]\s+/);
+        const pet=(parts[0]||'Cita de Google Calendar').trim();
+        const service=(parts.slice(1).join(' — ')||'Pendiente de indicar').trim();
+        const description=ev.description||'';
+        const getField=(label)=>{
+          const m=description.match(new RegExp('(?:^|\\n)'+label+'\\s*:\\s*(.*)','i'));
+          return m ? m[1].trim() : '';
+        };
+        if(!existing){
+          // Evitar duplicar una cita local que coincida en fecha, hora y mascota.
+          existing=appointments.find(a=>!a.googleEventId && a.date===evDate && a.time===evTime &&
+            (String(a.pet||'').trim().toLowerCase()===pet.toLowerCase()));
+        }
+        if(existing){
+          if(!existing.googleEventId){existing.googleEventId=ev.id; changed=true;}
+          if(existing.date!==evDate || existing.time!==evTime){existing.date=evDate;existing.time=evTime;changed=true;}
+          // Mantener los datos que ya estén rellenados en la agenda.
+        }else{
+          appointments.push({
+            id:Date.now()+Math.floor(Math.random()*100000), googleEventId:ev.id,
+            date:evDate, time:evTime, owner:getField('Titular'), phone:getField('Teléfono'),
+            pet, breed:getField('Raza'), service, price:getField('Precio').replace(/\s*€\s*$/,''),
+            payment:getField('Cobro')||'Pendiente', notes:getField('Observaciones')||description,
+            photo:''
+          });
+          changed=true;
+        }
+      }
+      pageToken=payload.nextPageToken||null;
+    }while(pageToken);
+  }catch(err){
+    console.error('Error importando eventos de Google Calendar:',err);
+    alert('No se pudieron importar las citas de Google Calendar: '+err.message);
+    return;
+  }
+
+  // 2) Actualizar/eliminar en la agenda los eventos que ya estaban enlazados.
+  const linked=appointments.filter(a=>a.googleEventId);
+  for(const a of linked){
+    try{
+      const res=await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(a.googleEventId)}`,{
+        headers:{'Authorization':'Bearer '+accessToken}
+      });
+      if(res.status===404 || res.status===410){
+        appointments=appointments.filter(x=>x.id!==a.id); changed=true; continue;
+      }
+      if(res.status===401){
+        accessToken=null;
+        document.getElementById('calendarStatus').textContent='Google Calendar: no conectado';
+        document.getElementById('googleBtn').textContent='📅 Conectar Google Calendar';
+        return;
+      }
+      if(!res.ok) continue;
+      const ev=await res.json();
+      if(ev.status==='cancelled'){
+        appointments=appointments.filter(x=>x.id!==a.id); changed=true; continue;
+      }
+      if(ev.start?.dateTime){
+        const dt=new Date(ev.start.dateTime);
+        const newDate=`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
+        const newTime=`${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+        if(a.date!==newDate || a.time!==newTime){a.date=newDate;a.time=newTime;changed=true;}
+      }else if(ev.start?.date){
+        if(a.date!==ev.start.date || a.time!=='09:00'){a.date=ev.start.date;a.time='09:00';changed=true;}
+      }
+    }catch(err){console.error('Error sincronizando cita enlazada',err);}
+  }
+  if(changed){localStorage.setItem('dogAppointments',JSON.stringify(appointments));render();}
+}
+
+function euro(value){return (Number(value)||0).toLocaleString('es-ES',{style:'currency',currency:'EUR'});}
+function currentMonthKey(){return document.getElementById('financeMonth').value || key(new Date()).slice(0,7);}
+function renderPanels(){
+  const search=(document.getElementById('clientSearch')?.value||'').trim().toLowerCase();
+  const groups=new Map();
+  appointments.forEach(a=>{
+    const owner=(a.owner||'Sin titular').trim();
+    const pet=(a.pet||'Sin nombre').trim();
+    const groupKey=owner.toLowerCase()+'||'+pet.toLowerCase();
+    if(!groups.has(groupKey))groups.set(groupKey,{owner,pet,phone:a.phone||'',breed:a.breed||'',visits:[]});
+    const g=groups.get(groupKey);g.visits.push(a);if(!g.phone&&a.phone)g.phone=a.phone;if(!g.breed&&a.breed)g.breed=a.breed;
+  });
+  const list=document.getElementById('clientList');
+  const filtered=[...groups.entries()].filter(([k,g])=>(g.owner+' '+g.pet+' '+g.breed+' '+g.phone).toLowerCase().includes(search)).sort((a,b)=>a[1].owner.localeCompare(b[1].owner,'es'));
+  list.innerHTML=filtered.length?'':'<div class="empty">Todavía no hay clientes registrados.</div>';
+  filtered.forEach(([groupKey,g])=>{
+    g.visits.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const row=document.createElement('div');row.className='client-row';
+    row.innerHTML=`<strong>${escapeHtml(g.pet)}</strong> · ${escapeHtml(g.owner)}<div class="small">${escapeHtml(g.breed||'Raza no indicada')} · ${g.visits.length} visita(s)${g.phone?' · '+escapeHtml(g.phone):''}</div><button class="secondary">Ver historial</button>`;
+    row.querySelector('button').onclick=()=>showClientHistory(groupKey,g);
+    list.appendChild(row);
+  });
+  const month=currentMonthKey();
+  const income=appointments.filter(a=>(a.date||'').slice(0,7)===month && String(a.payment||'').toLowerCase()==='pagado').reduce((sum,a)=>sum+(Number(a.price)||0),0);
+  const monthExpenses=expenses.filter(e=>(e.date||'').slice(0,7)===month);
+  const totalExpenses=monthExpenses.reduce((sum,e)=>sum+(Number(e.amount)||0),0);
+  document.getElementById('incomeTotal').textContent=euro(income);
+  document.getElementById('expenseTotal').textContent=euro(totalExpenses);
+  document.getElementById('balanceTotal').textContent=euro(income-totalExpenses);
+  const expenseList=document.getElementById('expenseList');
+  expenseList.innerHTML=monthExpenses.length?'':'<div class="empty">No hay gastos registrados este mes.</div>';
+  monthExpenses.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(exp=>{
+    const row=document.createElement('div');row.className='expense-row';
+    row.innerHTML=`<strong>${escapeHtml(exp.concept)}</strong><div class="small">${escapeHtml(exp.date)} · ${euro(exp.amount)}</div><button class="danger" style="margin-top:6px;padding:6px 9px">Eliminar gasto</button>`;
+    row.querySelector('button').onclick=()=>{if(confirm('¿Eliminar este gasto?')){expenses=expenses.filter(x=>x.id!==exp.id);localStorage.setItem('dogGroomingExpenses',JSON.stringify(expenses));renderPanels();}};
+    expenseList.appendChild(row);
+  });
+}
+function showClientHistory(groupKey,g){
+  const panel=document.getElementById('clientHistory');panel.style.display='block';
+  const visits=g.visits.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.time||'').localeCompare(a.time||''));
+  const total=visits.reduce((sum,a)=>sum+(Number(a.price)||0),0);
+  panel.innerHTML=`<hr><div class="side-title">Historial de ${escapeHtml(g.pet)}</div><div><strong>Titular:</strong> ${escapeHtml(g.owner)}<br><strong>Teléfono:</strong> ${escapeHtml(g.phone||'No indicado')}<br><strong>Raza:</strong> ${escapeHtml(g.breed||'No indicada')}<br><strong>Visitas:</strong> ${visits.length} · <strong>Importe acumulado registrado:</strong> ${euro(total)}</div><div id="historyEntries"></div><button class="secondary" id="closeHistory" style="margin-top:8px">Cerrar historial</button>`;
+  const entries=panel.querySelector('#historyEntries');
+  visits.forEach(a=>{
+    const entry=document.createElement('div');entry.className='history-entry';
+    entry.innerHTML=`<strong>${escapeHtml(a.date)}${a.time?' · '+escapeHtml(a.time):''}</strong><br>${escapeHtml(a.service||'Servicio no indicado')} · ${euro(a.price)}<br><span class="small">Cobro: ${escapeHtml(a.payment||'Pendiente')}${a.notes?' · '+escapeHtml(a.notes):''}</span><br><button class="secondary" style="margin-top:6px">Abrir cita</button>`;
+    entry.querySelector('button').onclick=()=>openEditModal(a.id);entries.appendChild(entry);
+  });
+  panel.querySelector('#closeHistory').onclick=()=>{panel.style.display='none';};
+}
+document.getElementById('clientsBtn').onclick=()=>{document.getElementById('clientsPanel').scrollIntoView({behavior:'smooth'});document.getElementById('clientSearch').focus();};
+document.getElementById('clientSearch').addEventListener('input',renderPanels);
+document.getElementById('financeMonth').value=key(new Date()).slice(0,7);
+document.getElementById('financeMonth').addEventListener('change',renderPanels);
+document.getElementById('expenseDate').value=key(new Date());
+document.getElementById('expenseForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  expenses.push({id:Date.now()+Math.floor(Math.random()*10000),date:document.getElementById('expenseDate').value,concept:document.getElementById('expenseConcept').value.trim(),amount:Number(document.getElementById('expenseAmount').value)});
+  localStorage.setItem('dogGroomingExpenses',JSON.stringify(expenses));
+  document.getElementById('expenseConcept').value='';document.getElementById('expenseAmount').value='';renderPanels();
+});
+
+document.getElementById("syncBtn").onclick=async()=>{
+  if(!accessToken){ requestGoogleAccess(()=>syncFromGoogleCalendar()); return; }
+  await syncFromGoogleCalendar();
+  alert("Sincronización terminada. Revisa las citas del mes correspondiente.");
+};
+
+async function deleteAppointment(){
+  if(editingId===null)return;
+  const a=appointments.find(x=>x.id===editingId);
+  if(!a)return;
+  if(!confirm(`¿Quieres eliminar la cita de ${a.pet}?`))return;
+  if(a.googleEventId && accessToken){
+    try{
+      await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(a.googleEventId)}?sendUpdates=none`,{
+        method:"DELETE",
+        headers:{"Authorization":"Bearer "+accessToken}
+      });
+    }catch(err){console.error(err);}
+  }
+  appointments=appointments.filter(x=>x.id!==editingId);
+  localStorage.setItem("dogAppointments",JSON.stringify(appointments));
+  closeModal();render();
+}
+
+setInterval(()=>{ if(accessToken) syncFromGoogleCalendar(); }, 30000);
+
+</script>
+</body>
+</html>
