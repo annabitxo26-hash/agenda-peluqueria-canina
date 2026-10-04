@@ -456,53 +456,115 @@ async function updateAppointmentInGoogleCalendar(a){
 }
 
 async function syncFromGoogleCalendar(){
-  if(!accessToken || !appointments.some(a=>a.googleEventId)) return;
-  const linked=appointments.filter(a=>a.googleEventId);
+  if(!accessToken) return;
   let changed=false;
+
+  // 1) Importar eventos creados directamente en Google Calendar.
+  // Se consulta un intervalo amplio para que también entren citas futuras.
+  try{
+    const now=new Date();
+    const timeMin=new Date(now.getFullYear(), now.getMonth()-2, 1).toISOString();
+    const timeMax=new Date(now.getFullYear()+1, now.getMonth()+2, 1).toISOString();
+    let pageToken=null;
+    do{
+      const params=new URLSearchParams({
+        timeMin, timeMax, singleEvents:'true', orderBy:'startTime', maxResults:'250'
+      });
+      if(pageToken) params.set('pageToken',pageToken);
+      const res=await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`,{
+        headers:{'Authorization':'Bearer '+accessToken}
+      });
+      if(res.status===401){
+        accessToken=null;
+        document.getElementById('calendarStatus').textContent='Google Calendar: no conectado';
+        document.getElementById('googleBtn').textContent='📅 Conectar Google Calendar';
+        alert('La autorización de Google ha caducado. Pulsa «Conectar Google Calendar» y vuelve a sincronizar.');
+        return;
+      }
+      const payload=await res.json();
+      if(!res.ok) throw new Error(payload.error?.message||'No se pudieron leer los eventos de Google Calendar');
+      for(const ev of (payload.items||[])){
+        if(ev.status==='cancelled' || !ev.id || (!ev.start?.dateTime && !ev.start?.date)) continue;
+        // Si ya conocemos este evento, no lo duplicamos.
+        let existing=appointments.find(a=>a.googleEventId===ev.id);
+        const startDate=ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(ev.start.date+'T09:00:00');
+        const evDate=`${startDate.getFullYear()}-${pad(startDate.getMonth()+1)}-${pad(startDate.getDate())}`;
+        const evTime=ev.start.dateTime ? `${pad(startDate.getHours())}:${pad(startDate.getMinutes())}` : '09:00';
+        const summary=(ev.summary||'Cita de Google Calendar').replace(/^🐶\s*/, '');
+        const parts=summary.split(/\s+[—–-]\s+/);
+        const pet=(parts[0]||'Cita de Google Calendar').trim();
+        const service=(parts.slice(1).join(' — ')||'Pendiente de indicar').trim();
+        const description=ev.description||'';
+        const getField=(label)=>{
+          const m=description.match(new RegExp('(?:^|\\n)'+label+'\\s*:\\s*(.*)','i'));
+          return m ? m[1].trim() : '';
+        };
+        if(!existing){
+          // Evitar duplicar una cita local que coincida en fecha, hora y mascota.
+          existing=appointments.find(a=>!a.googleEventId && a.date===evDate && a.time===evTime &&
+            (String(a.pet||'').trim().toLowerCase()===pet.toLowerCase()));
+        }
+        if(existing){
+          if(!existing.googleEventId){existing.googleEventId=ev.id; changed=true;}
+          if(existing.date!==evDate || existing.time!==evTime){existing.date=evDate;existing.time=evTime;changed=true;}
+          // Mantener los datos que ya estén rellenados en la agenda.
+        }else{
+          appointments.push({
+            id:Date.now()+Math.floor(Math.random()*100000), googleEventId:ev.id,
+            date:evDate, time:evTime, owner:getField('Titular'), phone:getField('Teléfono'),
+            pet, service, price:getField('Precio').replace(/\s*€\s*$/,''),
+            payment:getField('Cobro')||'Pendiente', notes:getField('Observaciones')||description,
+            photo:''
+          });
+          changed=true;
+        }
+      }
+      pageToken=payload.nextPageToken||null;
+    }while(pageToken);
+  }catch(err){
+    console.error('Error importando eventos de Google Calendar:',err);
+    alert('No se pudieron importar las citas de Google Calendar: '+err.message);
+    return;
+  }
+
+  // 2) Actualizar/eliminar en la agenda los eventos que ya estaban enlazados.
+  const linked=appointments.filter(a=>a.googleEventId);
   for(const a of linked){
     try{
       const res=await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(a.googleEventId)}`,{
-        headers:{"Authorization":"Bearer "+accessToken}
+        headers:{'Authorization':'Bearer '+accessToken}
       });
       if(res.status===404 || res.status===410){
-        appointments=appointments.filter(x=>x.id!==a.id);
-        changed=true;
-        continue;
+        appointments=appointments.filter(x=>x.id!==a.id); changed=true; continue;
       }
       if(res.status===401){
         accessToken=null;
-        document.getElementById("calendarStatus").textContent="Google Calendar: no conectado";
-        document.getElementById("googleBtn").textContent="📅 Conectar Google Calendar";
+        document.getElementById('calendarStatus').textContent='Google Calendar: no conectado';
+        document.getElementById('googleBtn').textContent='📅 Conectar Google Calendar';
         return;
       }
       if(!res.ok) continue;
       const ev=await res.json();
-      if(ev.status==="cancelled"){
-        appointments=appointments.filter(x=>x.id!==a.id);
-        changed=true;
-        continue;
+      if(ev.status==='cancelled'){
+        appointments=appointments.filter(x=>x.id!==a.id); changed=true; continue;
       }
-      // Si la cita se ha movido en Google Calendar, actualizamos fecha y hora aquí.
       if(ev.start?.dateTime){
         const dt=new Date(ev.start.dateTime);
         const newDate=`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
         const newTime=`${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-        if(a.date!==newDate || a.time!==newTime){
-          a.date=newDate; a.time=newTime; changed=true;
-        }
+        if(a.date!==newDate || a.time!==newTime){a.date=newDate;a.time=newTime;changed=true;}
+      }else if(ev.start?.date){
+        if(a.date!==ev.start.date || a.time!=='09:00'){a.date=ev.start.date;a.time='09:00';changed=true;}
       }
-    }catch(err){ console.error("Error sincronizando",err); }
+    }catch(err){console.error('Error sincronizando cita enlazada',err);}
   }
-  if(changed){
-    localStorage.setItem("dogAppointments",JSON.stringify(appointments));
-    render();
-  }
+  if(changed){localStorage.setItem('dogAppointments',JSON.stringify(appointments));render();}
 }
 
 document.getElementById("syncBtn").onclick=async()=>{
   if(!accessToken){ requestGoogleAccess(()=>syncFromGoogleCalendar()); return; }
   await syncFromGoogleCalendar();
-  alert("Google Calendar y la agenda han sido sincronizados.");
+  alert("Sincronización terminada. Revisa las citas del mes correspondiente.");
 };
 
 async function deleteAppointment(){
