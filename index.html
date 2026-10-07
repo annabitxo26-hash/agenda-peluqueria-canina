@@ -81,6 +81,9 @@ textarea{min-height:80px;resize:vertical}
     <span class="status" id="calendarStatus">Google Calendar: no conectado</span>
     <button class="google" id="googleBtn">📅 Conectar Google Calendar</button>
     <button class="secondary" id="syncBtn">🔄 Sincronizar</button>
+    <button class="secondary" id="backupBtn">💾 Guardar copia</button>
+    <button class="secondary" id="restoreBtn">📥 Restaurar copia</button>
+    <input type="file" id="restoreFile" accept="application/json,.json" style="display:none">
     <button class="secondary" id="clientsBtn">🐶 Clientes e historial</button>
     <button class="primary" id="newBtn">＋ Nueva cita</button>
   </div>
@@ -107,7 +110,7 @@ textarea{min-height:80px;resize:vertical}
     <aside class="card">
       <div class="side-title">Citas de hoy</div>
       <div id="todayAppointments"></div>
-      <div class="notice">Las citas guardadas aquí se mantienen en este navegador. Google Calendar se conecta por separado.</div>
+      <div class="notice">La agenda guarda sus propios datos. Google Calendar es opcional y solo sirve para sincronizar las citas.</div>
     </aside>
   </div>
 
@@ -115,7 +118,7 @@ textarea{min-height:80px;resize:vertical}
     <section class="card" id="clientsPanel">
       <div class="side-title">🐶 Clientes e historial de visitas</div>
       <input id="clientSearch" type="search" placeholder="Buscar titular o mascota..." style="width:100%">
-      <div class="small" style="margin-top:8px">Los clientes aparecen automáticamente al registrar sus citas.</div>
+      <div class="small" style="margin-top:8px">Los clientes aparecen automáticamente al registrar sus citas. Los datos propios de la agenda se pueden trasladar con 💾 Guardar copia y 📥 Restaurar copia.</div>
       <div id="clientList"></div>
       <div id="clientHistory" style="display:none;margin-top:16px"></div>
     </section>
@@ -222,6 +225,9 @@ let pendingCalendarAppointment=null;
 let googleReady=false;
 let authCallback=null;
 let editingId=null;
+appointments=Array.isArray(appointments)?appointments:[];
+expenses=Array.isArray(expenses)?expenses:[];
+appointments.forEach(a=>{ if(!a.photoData) a.photoData=""; });
 
 const pad=n=>String(n).padStart(2,"0");
 const key=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -384,6 +390,7 @@ function openModal(){
   document.getElementById("deleteBtn").style.display="none";
   document.getElementById("appointmentForm").reset();
   document.getElementById("preview").style.display="none";
+  document.getElementById("photo").dataset.dataUrl="";
   document.getElementById("modal").classList.add("show");
   const now=new Date();
   document.getElementById("date").value=key(now);
@@ -407,13 +414,16 @@ function openEditModal(id){
   document.getElementById("payment").value=a.payment||"Pendiente";
   document.getElementById("notes").value=a.notes||"";
   document.getElementById("photo").value="";
-  document.getElementById("preview").style.display="none";
+  document.getElementById("photo").dataset.dataUrl=a.photoData||"";
+  const existingImg=document.getElementById("preview");
+  if(a.photoData){ existingImg.src=a.photoData; existingImg.style.display="block"; } else { existingImg.style.display="none"; }
   document.getElementById("modal").classList.add("show");
 }
 function closeModal(){
   document.getElementById("modal").classList.remove("show");
   document.getElementById("appointmentForm").reset();
   document.getElementById("preview").style.display="none";
+  document.getElementById("photo").dataset.dataUrl="";
   editingId=null;
 }
 
@@ -428,7 +438,13 @@ document.getElementById("googleBtn").onclick=()=>requestGoogleAccess();
 
 document.getElementById("photo").addEventListener("change",e=>{
  const f=e.target.files[0];if(!f)return;
- const img=document.getElementById("preview");img.src=URL.createObjectURL(f);img.style.display="block";
+ const reader=new FileReader();
+ reader.onload=()=>{
+   const img=document.getElementById("preview");
+   img.src=reader.result;img.style.display="block";
+   e.target.dataset.dataUrl=reader.result;
+ };
+ reader.readAsDataURL(f);
 });
 
 document.getElementById("appointmentForm").addEventListener("submit",async e=>{
@@ -438,7 +454,8 @@ document.getElementById("appointmentForm").addEventListener("submit",async e=>{
   owner:document.getElementById("owner").value,phone:document.getElementById("phone").value,
   pet:document.getElementById("pet").value,breed:document.getElementById("breed").value,service:document.getElementById("service").value,
   price:document.getElementById("price").value,payment:document.getElementById("payment").value,
-  notes:document.getElementById("notes").value
+  notes:document.getElementById("notes").value,
+  photoData:document.getElementById("photo").dataset.dataUrl || (editingId!==null ? (appointments.find(x=>x.id===editingId)?.photoData||"") : "")
  };
  if(editingId!==null){
    const a=appointments.find(x=>x.id===editingId);
@@ -661,6 +678,61 @@ document.getElementById('expenseForm').addEventListener('submit',e=>{
   expenses.push({id:Date.now()+Math.floor(Math.random()*10000),date:document.getElementById('expenseDate').value,concept:document.getElementById('expenseConcept').value.trim(),amount:Number(document.getElementById('expenseAmount').value)});
   localStorage.setItem('dogGroomingExpenses',JSON.stringify(expenses));
   document.getElementById('expenseConcept').value='';document.getElementById('expenseAmount').value='';renderPanels();
+});
+
+// ===== Datos propios de la agenda: exportar/importar =====
+function getAgendaData(){
+  return {
+    format:"agenda-peluqueria-canina",
+    version:2,
+    exportedAt:new Date().toISOString(),
+    appointments:appointments,
+    expenses:expenses
+  };
+}
+
+function downloadJson(filename, data){
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+function saveBackup(){
+  const stamp=new Date().toISOString().slice(0,10);
+  downloadJson(`agenda-peluqueria-canina-copia-${stamp}.json`,getAgendaData());
+  alert("Copia de seguridad guardada. Guarda este archivo en un lugar seguro.");
+}
+
+function restoreBackup(file){
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const data=JSON.parse(reader.result);
+      if(data?.format!=="agenda-peluqueria-canina" || !Array.isArray(data.appointments) || !Array.isArray(data.expenses)){
+        throw new Error("El archivo no parece una copia válida de esta agenda.");
+      }
+      if(!confirm("La restauración sustituirá las citas y gastos actuales de ESTE dispositivo por los de la copia. ¿Continuar?")) return;
+      appointments=data.appointments;
+      expenses=data.expenses;
+      localStorage.setItem("dogAppointments",JSON.stringify(appointments));
+      localStorage.setItem("dogGroomingExpenses",JSON.stringify(expenses));
+      render();
+      alert("Copia restaurada correctamente.");
+    }catch(err){
+      alert("No se pudo restaurar la copia: "+err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+document.getElementById("backupBtn").onclick=saveBackup;
+document.getElementById("restoreBtn").onclick=()=>document.getElementById("restoreFile").click();
+document.getElementById("restoreFile").addEventListener("change",e=>{
+  const file=e.target.files[0];
+  if(file) restoreBackup(file);
+  e.target.value="";
 });
 
 document.getElementById("syncBtn").onclick=async()=>{
